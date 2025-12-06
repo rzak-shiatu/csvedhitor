@@ -1,0 +1,897 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>CSVエディタ</title>
+<style>
+:root {
+  color-scheme: light dark;
+  --bg-color: #f5f5f5;
+  --panel-color: #ffffff;
+  --border-color: #cccccc;
+  --text-color: #222222;
+  --accent-color: #0078d4;
+  --accent-weak: #e0f0ff;
+  --row-hover: rgba(0, 120, 212, 0.08);
+  --row-selected: rgba(0, 120, 212, 0.18);
+  --header-bg: #f0f6ff;
+  --match-bg: #fff3b0;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg-color: #1b1d21;
+    --panel-color: #24272d;
+    --border-color: #3a3d45;
+    --text-color: #e5e5e5;
+    --accent-color: #50a7ff;
+    --accent-weak: rgba(80, 167, 255, 0.15);
+    --row-hover: rgba(80, 167, 255, 0.1);
+    --row-selected: rgba(80, 167, 255, 0.2);
+    --header-bg: #2c3139;
+    --match-bg: #554000;
+  }
+}
+html, body {
+  height: 100%;
+  margin: 0;
+  background: var(--bg-color);
+  color: var(--text-color);
+  font-family: 'Segoe UI', 'Hiragino Kaku Gothic ProN', Meiryo, sans-serif;
+}
+body {
+  display: flex;
+  flex-direction: column;
+}
+header {
+  background: var(--panel-color);
+  border-bottom: 1px solid var(--border-color);
+}
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.6rem 1rem;
+  flex-wrap: wrap;
+}
+.toolbar button, .toolbar select, .toolbar label {
+  font-size: 0.9rem;
+}
+.toolbar button {
+  background: var(--accent-color);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 0.45rem 0.9rem;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+.toolbar button.secondary {
+  background: var(--panel-color);
+  color: var(--text-color);
+  border: 1px solid var(--border-color);
+}
+.toolbar button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.toolbar button:not(:disabled):hover {
+  opacity: 0.85;
+}
+main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+#gridWrapper {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  background: var(--panel-color);
+  margin: 0 1rem 0.5rem;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  overflow: hidden;
+  min-height: 0;
+}
+#gridHeader {
+  position: relative;
+  overflow: hidden;
+  border-bottom: 1px solid var(--border-color);
+  background: var(--header-bg);
+}
+#gridHeaderInner {
+  display: flex;
+  position: relative;
+  min-width: 100%;
+}
+.header-cell {
+  flex-shrink: 0;
+  padding: 0.45rem;
+  border-right: 1px solid var(--border-color);
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  position: relative;
+  background: inherit;
+}
+.header-cell[contenteditable="true"]:focus {
+  outline: 2px solid var(--accent-color);
+  outline-offset: -1px;
+}
+.resize-handle {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 6px;
+  cursor: col-resize;
+  height: 100%;
+}
+#gridBody {
+  flex: 1;
+  position: relative;
+  overflow: auto;
+  background: var(--panel-color);
+}
+#gridSpacer {
+  width: 100%;
+}
+#rowContainer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+}
+.grid-row {
+  position: absolute;
+  display: flex;
+  min-height: 30px;
+  align-items: stretch;
+  width: 100%;
+}
+.grid-row.odd .grid-cell {
+  background: rgba(0,0,0,0.015);
+}
+.grid-row:hover .grid-cell {
+  background: var(--row-hover);
+}
+.grid-row.selected .grid-cell {
+  background: var(--row-selected);
+}
+.grid-cell {
+  flex-shrink: 0;
+  border-right: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--border-color);
+  padding: 0.25rem 0.35rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  background: transparent;
+  display: flex;
+  align-items: center;
+}
+.grid-cell[contenteditable="true"]:focus {
+  outline: 2px solid var(--accent-color);
+  outline-offset: -1px;
+}
+.grid-cell.row-number {
+  position: sticky;
+  left: 0;
+  background: var(--panel-color);
+  font-weight: 600;
+  z-index: 2;
+}
+.header-cell.row-number {
+  position: sticky;
+  left: 0;
+  z-index: 3;
+  background: inherit;
+}
+.grid-cell.match {
+  background: var(--match-bg);
+}
+footer {
+  border-top: 1px solid var(--border-color);
+  background: var(--panel-color);
+  padding: 0.4rem 1rem 0.6rem;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1rem;
+  font-size: 0.9rem;
+}
+#searchPanel {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+#searchPanel input[type="text"] {
+  padding: 0.3rem 0.4rem;
+  border-radius: 4px;
+  border: 1px solid var(--border-color);
+  background: var(--panel-color);
+  color: var(--text-color);
+}
+#statusMessage {
+  flex: 1;
+  min-width: 200px;
+}
+.drag-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 120, 212, 0.15);
+  border: 3px dashed var(--accent-color);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  color: var(--accent-color);
+  font-size: 1.5rem;
+  pointer-events: none;
+  z-index: 1000;
+}
+</style>
+</head>
+<body>
+<div class="drag-overlay" id="dragOverlay">CSVファイルをドロップ</div>
+<header>
+  <div class="toolbar">
+    <input type="file" id="fileInput" accept=".csv,text/csv" style="display:none" />
+    <button id="openButton">CSVを開く</button>
+    <label>区切り文字
+      <select id="delimiterSelect">
+        <option value=",">,</option>
+        <option value=";">;</option>
+        <option value="\t">TAB</option>
+      </select>
+    </label>
+    <label>改行コード
+      <select id="newlineSelect">
+        <option value="\n">LF</option>
+        <option value="\r\n">CRLF</option>
+      </select>
+    </label>
+    <label><input type="checkbox" id="bomToggle"> BOM付き</label>
+    <button id="addRowButton" class="secondary" disabled>行追加</button>
+    <button id="deleteRowButton" class="secondary" disabled>行削除</button>
+    <button id="exportButton" disabled>CSVを書き出す</button>
+    <button id="searchButton" class="secondary" disabled>全体検索</button>
+  </div>
+</header>
+<main>
+  <div id="gridWrapper">
+    <div id="gridHeader">
+      <div id="gridHeaderInner"></div>
+    </div>
+    <div id="gridBody">
+      <div id="gridSpacer"></div>
+      <div id="rowContainer"></div>
+    </div>
+  </div>
+</main>
+<footer>
+  <div id="rowCount">行数: 0</div>
+  <div id="searchPanel" hidden>
+    <label>検索: <input type="text" id="searchInput" placeholder="キーワード"></label>
+    <label><input type="checkbox" id="filterToggle"> 一致のみ表示</label>
+    <button id="clearSearch" class="secondary">クリア</button>
+  </div>
+  <div id="statusMessage">CSVを読み込んでください。</div>
+</footer>
+<script>
+(() => {
+  const ROW_HEIGHT = 30;
+  const ROW_NUMBER_WIDTH = 60;
+  let data = [];
+  let columnWidths = [];
+  let filteredIndices = [];
+  let searchMatches = new Map();
+  let selectedRow = null; // actual index in data (>=1)
+  let undoStack = [];
+  let redoStack = [];
+  let currentFileName = 'edited.csv';
+  let isRendering = false;
+
+  function getDelimiterChar() {
+    return delimiterSelect.value === '\\t' ? '\t' : delimiterSelect.value;
+  }
+
+  const fileInput = document.getElementById('fileInput');
+  const openButton = document.getElementById('openButton');
+  const delimiterSelect = document.getElementById('delimiterSelect');
+  const newlineSelect = document.getElementById('newlineSelect');
+  const bomToggle = document.getElementById('bomToggle');
+  const addRowButton = document.getElementById('addRowButton');
+  const deleteRowButton = document.getElementById('deleteRowButton');
+  const exportButton = document.getElementById('exportButton');
+  const searchButton = document.getElementById('searchButton');
+  const gridHeaderInner = document.getElementById('gridHeaderInner');
+  const gridBody = document.getElementById('gridBody');
+  const gridSpacer = document.getElementById('gridSpacer');
+  const rowContainer = document.getElementById('rowContainer');
+  const rowCount = document.getElementById('rowCount');
+  const statusMessage = document.getElementById('statusMessage');
+  const searchPanel = document.getElementById('searchPanel');
+  const searchInput = document.getElementById('searchInput');
+  const filterToggle = document.getElementById('filterToggle');
+  const clearSearch = document.getElementById('clearSearch');
+  const dragOverlay = document.getElementById('dragOverlay');
+
+  function resetState() {
+    data = [];
+    columnWidths = [];
+    filteredIndices = [];
+    searchMatches = new Map();
+    selectedRow = null;
+    undoStack = [];
+    redoStack = [];
+    searchInput.value = '';
+    filterToggle.checked = false;
+    searchPanel.hidden = true;
+  }
+
+  function captureState() {
+    return {
+      data: data.map(row => row.slice()),
+      columnWidths: columnWidths.slice(),
+      selectedRow,
+    };
+  }
+
+  function pushUndoState() {
+    if (!data.length) return;
+    undoStack.push(captureState());
+    if (undoStack.length > 20) undoStack.shift();
+    redoStack.length = 0;
+  }
+
+  function applyState(state) {
+    data = state.data.map(row => row.slice());
+    columnWidths = state.columnWidths.slice();
+    selectedRow = state.selectedRow;
+    filteredIndices = Array.from({length: Math.max(data.length - 1, 0)}, (_, i) => i);
+    searchMatches.clear();
+    searchInput.value = '';
+    filterToggle.checked = false;
+    renderAll();
+    setStatus('状態を復元しました。');
+  }
+
+  function undo() {
+    if (!undoStack.length) return;
+    redoStack.push(captureState());
+    const state = undoStack.pop();
+    applyState(state);
+  }
+
+  function redo() {
+    if (!redoStack.length) return;
+    undoStack.push(captureState());
+    const state = redoStack.pop();
+    applyState(state);
+  }
+
+  function setStatus(message) {
+    statusMessage.textContent = message;
+  }
+
+  function updateRowCount() {
+    const total = data.length ? data.length - 1 : 0;
+    const visible = filteredIndices.length;
+    rowCount.textContent = `行数: ${visible}/${total}`;
+  }
+
+  function initColumnWidths() {
+    if (!data.length) return;
+    columnWidths = data[0].map(() => 160);
+  }
+
+  function updateGridDimensions() {
+    const baseWidth = ROW_NUMBER_WIDTH + columnWidths.reduce((sum, w) => sum + w, 0);
+    const width = Math.max(baseWidth, gridBody.clientWidth || baseWidth);
+    gridHeaderInner.style.width = width + 'px';
+    gridHeaderInner.style.minWidth = width + 'px';
+    rowContainer.style.width = width + 'px';
+    rowContainer.style.minWidth = width + 'px';
+    gridSpacer.style.width = width + 'px';
+    gridSpacer.style.height = (filteredIndices.length * ROW_HEIGHT) + 'px';
+  }
+
+  function renderHeader() {
+    gridHeaderInner.innerHTML = '';
+    if (!data.length) return;
+    const headerRow = document.createDocumentFragment();
+
+    const rowNumberCell = document.createElement('div');
+    rowNumberCell.className = 'header-cell row-number';
+    rowNumberCell.style.width = ROW_NUMBER_WIDTH + 'px';
+    rowNumberCell.textContent = '#';
+    headerRow.appendChild(rowNumberCell);
+
+    data[0].forEach((value, colIndex) => {
+      const cell = document.createElement('div');
+      cell.className = 'header-cell';
+      cell.style.width = columnWidths[colIndex] + 'px';
+      cell.contentEditable = true;
+      cell.spellcheck = false;
+      cell.dataset.row = '0';
+      cell.dataset.col = colIndex.toString();
+      cell.textContent = value;
+      const handle = document.createElement('div');
+      handle.className = 'resize-handle';
+      handle.dataset.col = colIndex.toString();
+      cell.appendChild(handle);
+      attachCellEvents(cell);
+      headerRow.appendChild(cell);
+    });
+    gridHeaderInner.appendChild(headerRow);
+  }
+
+  function renderVisibleRows() {
+    if (!data.length) {
+      rowContainer.innerHTML = '';
+      gridSpacer.style.height = '0px';
+      return;
+    }
+    if (isRendering) return;
+    isRendering = true;
+    requestAnimationFrame(() => {
+      const scrollTop = gridBody.scrollTop;
+      const viewportHeight = gridBody.clientHeight;
+      const start = Math.max(Math.floor(scrollTop / ROW_HEIGHT), 0);
+      const end = Math.min(start + Math.ceil(viewportHeight / ROW_HEIGHT) + 2, filteredIndices.length);
+
+      rowContainer.innerHTML = '';
+      for (let i = start; i < end; i++) {
+        const dataRowIndex = filteredIndices[i] + 1;
+        const rowElement = document.createElement('div');
+        rowElement.className = 'grid-row';
+        rowElement.style.height = ROW_HEIGHT + 'px';
+        if (selectedRow === dataRowIndex) {
+          rowElement.classList.add('selected');
+        }
+        if ((filteredIndices[i] % 2) === 1) {
+          rowElement.classList.add('odd');
+        }
+        rowElement.style.transform = `translateY(${i * ROW_HEIGHT}px)`;
+
+        const rowNumberCell = document.createElement('div');
+        rowNumberCell.className = 'grid-cell row-number';
+        rowNumberCell.style.width = ROW_NUMBER_WIDTH + 'px';
+        rowNumberCell.textContent = dataRowIndex.toString();
+        rowElement.appendChild(rowNumberCell);
+
+        data[0].forEach((_, colIndex) => {
+        const cell = document.createElement('div');
+        cell.className = 'grid-cell';
+        cell.style.width = columnWidths[colIndex] + 'px';
+        cell.contentEditable = true;
+        cell.spellcheck = false;
+        cell.dataset.row = dataRowIndex.toString();
+        cell.dataset.col = colIndex.toString();
+          const value = data[dataRowIndex][colIndex] ?? '';
+          cell.textContent = value;
+          const matches = searchMatches.get(dataRowIndex);
+          if (matches && matches.has(colIndex)) {
+            cell.classList.add('match');
+          }
+          attachCellEvents(cell);
+          rowElement.appendChild(cell);
+        });
+
+        rowElement.addEventListener('click', () => {
+          selectedRow = dataRowIndex;
+          updateSelectionState();
+          renderVisibleRows();
+        });
+
+        rowContainer.appendChild(rowElement);
+      }
+      isRendering = false;
+    });
+  }
+
+  function renderAll() {
+    filteredIndices = Array.from({length: Math.max(data.length - 1, 0)}, (_, i) => i);
+    updateGridDimensions();
+    renderHeader();
+    renderVisibleRows();
+    updateRowCount();
+    toggleControls(true);
+    updateSelectionState();
+  }
+
+  function toggleControls(enabled) {
+    addRowButton.disabled = !enabled;
+    exportButton.disabled = !enabled;
+    searchButton.disabled = !enabled;
+    deleteRowButton.disabled = !enabled || selectedRow === null;
+  }
+
+  function updateSelectionState() {
+    deleteRowButton.disabled = !data.length || selectedRow === null;
+  }
+
+  function attachCellEvents(cell) {
+    cell.addEventListener('focus', () => {
+      cell.dataset.original = cell.textContent;
+    });
+
+    cell.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        cell.blur();
+      } else if (event.key === 'Escape') {
+        event.preventDefault();
+        cell.textContent = cell.dataset.original || '';
+        cell.blur();
+      }
+    });
+
+    cell.addEventListener('blur', () => {
+      const rowIndex = parseInt(cell.dataset.row, 10);
+      const colIndex = parseInt(cell.dataset.col, 10);
+      if (Number.isNaN(rowIndex) || Number.isNaN(colIndex)) return;
+      const newValue = cell.textContent;
+      if (!data[rowIndex]) return;
+      if (data[rowIndex][colIndex] !== newValue) {
+        pushUndoState();
+        data[rowIndex][colIndex] = newValue;
+        setStatus(`セル (${rowIndex}, ${colIndex + 1}) を更新しました。`);
+        applySearch({suppressStatus: true});
+      }
+    });
+  }
+
+  function parseCSV(text, delimiter) {
+    const rows = [];
+    let currentField = '';
+    let currentRow = [];
+    let inQuotes = false;
+    let endedWithNewline = false;
+    for (let i = 0; i < text.length; i++) {
+      const char = text[i];
+      if (inQuotes) {
+        if (char === '"') {
+          if (text[i + 1] === '"') {
+            currentField += '"';
+            i++;
+          } else {
+            inQuotes = false;
+          }
+        } else {
+          currentField += char;
+        }
+      } else {
+        if (char === '"') {
+          inQuotes = true;
+          endedWithNewline = false;
+        } else if (char === delimiter) {
+          currentRow.push(currentField);
+          currentField = '';
+          endedWithNewline = false;
+        } else if (char === '\n') {
+          currentRow.push(currentField);
+          rows.push(currentRow);
+          currentRow = [];
+          currentField = '';
+          endedWithNewline = true;
+        } else if (char === '\r') {
+          if (text[i + 1] === '\n') {
+            currentRow.push(currentField);
+            rows.push(currentRow);
+            currentRow = [];
+            currentField = '';
+            i++;
+          } else {
+            currentRow.push(currentField);
+            rows.push(currentRow);
+            currentRow = [];
+            currentField = '';
+          }
+          endedWithNewline = true;
+        } else {
+          currentField += char;
+          endedWithNewline = false;
+        }
+      }
+    }
+    if (inQuotes) {
+      throw new Error('不正なCSV: クォートが閉じられていません。');
+    }
+    if (!(endedWithNewline && currentField === '' && currentRow.length === 0)) {
+      currentRow.push(currentField);
+      rows.push(currentRow);
+    }
+    return rows;
+  }
+
+  function stringifyCSV(rows, delimiter, newline) {
+    return rows.map(row => row.map(value => {
+      const safeValue = (value ?? '').replace(/"/g, '""');
+      return '"' + safeValue + '"';
+    }).join(delimiter)).join(newline);
+  }
+
+  function loadCSVContent(content, filename) {
+    const delimiter = getDelimiterChar();
+    let parsed;
+    try {
+      parsed = parseCSV(content, delimiter);
+    } catch (error) {
+      setStatus(error.message);
+      return;
+    }
+    if (!parsed.length) {
+      setStatus('データが見つかりません。');
+      return;
+    }
+    resetState();
+    const maxColumns = parsed.reduce((max, row) => Math.max(max, row.length), 0);
+    if (parsed[0].length < maxColumns) {
+      for (let i = parsed[0].length; i < maxColumns; i++) {
+        parsed[0].push(`列${i + 1}`);
+      }
+    }
+    for (let i = 0; i < parsed.length; i++) {
+      const row = parsed[i];
+      if (row.length < maxColumns) {
+        row.push(...Array.from({length: maxColumns - row.length}, () => ''));
+      }
+      for (let j = 0; j < row.length; j++) {
+        if (row[j] == null) {
+          row[j] = '';
+        }
+      }
+    }
+    data = parsed;
+    currentFileName = filename ? filename.replace(/\.csv$/i, '') + '_edited.csv' : 'edited.csv';
+    initColumnWidths();
+    renderAll();
+    gridBody.scrollTop = 0;
+    gridBody.scrollLeft = 0;
+    searchPanel.hidden = false;
+    setStatus(`${filename || '読み込み'}: ${data.length - 1} 行を読み込みました。`);
+  }
+
+  function handleFile(file) {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const text = reader.result.replace(/^\ufeff/, '');
+      loadCSVContent(text, file.name);
+    };
+    reader.readAsText(file, 'utf-8');
+  }
+
+  function applySearch(options = {}) {
+    const {trimInput = false, suppressStatus = false, preserveScroll = suppressStatus} = options;
+    let term = searchInput.value;
+    if (trimInput) {
+      term = term.trim();
+      searchInput.value = term;
+    }
+    searchMatches.clear();
+    if (!data.length) {
+      filteredIndices = [];
+      updateGridDimensions();
+      renderVisibleRows();
+      updateRowCount();
+      updateSelectionState();
+      return;
+    }
+    const lowerTerm = term.toLowerCase();
+    let matchCount = 0;
+    if (term) {
+      const newFiltered = [];
+      for (let i = 1; i < data.length; i++) {
+        const row = data[i];
+        let rowMatched = false;
+        row.forEach((cell, colIndex) => {
+          const value = (cell ?? '');
+          if (value.toLowerCase().includes(lowerTerm)) {
+            rowMatched = true;
+            if (!searchMatches.has(i)) {
+              searchMatches.set(i, new Set());
+            }
+            searchMatches.get(i).add(colIndex);
+            matchCount++;
+          }
+        });
+        if (filterToggle.checked && rowMatched) {
+          newFiltered.push(i - 1);
+        }
+      }
+      if (filterToggle.checked) {
+        filteredIndices = newFiltered;
+      } else {
+        filteredIndices = Array.from({length: data.length - 1}, (_, idx) => idx);
+      }
+      if (!suppressStatus) {
+        setStatus(`${matchCount} 件一致しました。`);
+      }
+    } else {
+      filteredIndices = Array.from({length: data.length - 1}, (_, idx) => idx);
+      if (!suppressStatus) {
+        setStatus('検索語をクリアしました。');
+      }
+    }
+    if (selectedRow !== null) {
+      const visible = filteredIndices.some(idx => idx + 1 === selectedRow);
+      if (!visible) {
+        selectedRow = null;
+      }
+    }
+    if (!preserveScroll) {
+      gridBody.scrollTop = 0;
+    }
+    updateGridDimensions();
+    renderVisibleRows();
+    updateRowCount();
+    updateSelectionState();
+  }
+
+  function clearSearchState() {
+    searchInput.value = '';
+    filterToggle.checked = false;
+    searchMatches.clear();
+    if (data.length) {
+      filteredIndices = Array.from({length: data.length - 1}, (_, idx) => idx);
+    }
+    gridBody.scrollTop = 0;
+    updateGridDimensions();
+    renderVisibleRows();
+    updateRowCount();
+    updateSelectionState();
+    setStatus('検索をリセットしました。');
+  }
+
+  function addRow() {
+    if (!data.length) return;
+    pushUndoState();
+    const columns = data[0].length;
+    const newRow = Array.from({length: columns}, () => '');
+    let insertIndex = data.length;
+    if (selectedRow && selectedRow >= 1) {
+      insertIndex = selectedRow + 1;
+    }
+    data.splice(insertIndex, 0, newRow);
+    selectedRow = insertIndex;
+    applySearch({suppressStatus: true});
+    updateSelectionState();
+    setStatus('空行を追加しました。');
+  }
+
+  function deleteRow() {
+    if (!data.length || selectedRow === null || selectedRow < 1) {
+      setStatus('削除する行を選択してください。');
+      return;
+    }
+    pushUndoState();
+    data.splice(selectedRow, 1);
+    selectedRow = null;
+    applySearch({suppressStatus: true});
+    updateSelectionState();
+    setStatus('行を削除しました。');
+  }
+
+  function exportCSV() {
+    if (!data.length) {
+      setStatus('書き出すデータがありません。');
+      return;
+    }
+    const delimiter = getDelimiterChar();
+    const newline = newlineSelect.value;
+    const csv = stringifyCSV(data, delimiter, newline);
+    const bom = bomToggle.checked ? '\ufeff' : '';
+    const blob = new Blob([bom + csv], {type: 'text/csv;charset=utf-8;'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = currentFileName;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    setStatus('CSVを書き出しました。');
+  }
+
+  function handleScroll() {
+    const scrollLeft = gridBody.scrollLeft;
+    gridHeaderInner.style.transform = `translateX(${-scrollLeft}px)`;
+    renderVisibleRows();
+  }
+
+  function handleResizeStart(event) {
+    if (!event.target.classList.contains('resize-handle')) return;
+    const colIndex = parseInt(event.target.dataset.col, 10);
+    if (Number.isNaN(colIndex)) return;
+    event.preventDefault();
+    const startX = event.clientX;
+    const startWidth = columnWidths[colIndex];
+    function onMove(e) {
+      const delta = e.clientX - startX;
+      const newWidth = Math.max(60, startWidth + delta);
+      columnWidths[colIndex] = newWidth;
+      updateGridDimensions();
+      renderHeader();
+      renderVisibleRows();
+    }
+    function onUp() {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+    }
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  }
+
+  function handleDragOver(event) {
+    event.preventDefault();
+    dragOverlay.style.display = 'flex';
+  }
+
+  function handleDragLeave() {
+    dragOverlay.style.display = 'none';
+  }
+
+  function handleDrop(event) {
+    event.preventDefault();
+    dragOverlay.style.display = 'none';
+    const file = event.dataTransfer.files[0];
+    handleFile(file);
+  }
+
+  openButton.addEventListener('click', () => fileInput.click());
+  fileInput.addEventListener('change', (event) => {
+    const file = event.target.files[0];
+    handleFile(file);
+    fileInput.value = '';
+  });
+
+  gridBody.addEventListener('scroll', handleScroll);
+  gridHeaderInner.addEventListener('mousedown', handleResizeStart);
+
+  addRowButton.addEventListener('click', addRow);
+  deleteRowButton.addEventListener('click', deleteRow);
+  exportButton.addEventListener('click', exportCSV);
+
+  searchButton.addEventListener('click', () => {
+    searchPanel.hidden = !searchPanel.hidden;
+    if (!searchPanel.hidden) {
+      searchInput.focus();
+    }
+  });
+
+  searchInput.addEventListener('input', () => applySearch({trimInput: true}));
+  filterToggle.addEventListener('change', () => applySearch());
+  clearSearch.addEventListener('click', clearSearchState);
+
+  document.addEventListener('keydown', (event) => {
+    if (event.target.closest('[contenteditable="true"]')) return;
+    if (event.ctrlKey || event.metaKey) {
+      if (event.key.toLowerCase() === 'z') {
+        event.preventDefault();
+        if (event.shiftKey) {
+          redo();
+        } else {
+          undo();
+        }
+      } else if (event.key.toLowerCase() === 'y') {
+        event.preventDefault();
+        redo();
+      }
+    }
+  });
+
+  ['dragover', 'dragenter'].forEach(evt => {
+    window.addEventListener(evt, handleDragOver);
+  });
+  ['dragleave', 'dragend'].forEach(evt => {
+    window.addEventListener(evt, handleDragLeave);
+  });
+  window.addEventListener('drop', handleDrop);
+
+  toggleControls(false);
+})();
+</script>
+</body>
+</html>
